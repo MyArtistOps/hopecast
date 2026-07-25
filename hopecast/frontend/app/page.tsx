@@ -1,3 +1,4 @@
+import { getSupabaseServerClient } from '@/lib/supabaseServer';
 export default async function DashboardPage() {
   const admin = await requireAdminSession();
   if (!admin) redirect('/login');
