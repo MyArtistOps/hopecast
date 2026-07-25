@@ -1,4 +1,7 @@
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { redirect } from 'next/navigation';
+import { requireAdminSession, getSupabaseServerClient } from '@/lib/supabaseServer';
+import ControlRoom from './ControlRoom';
+
 export default async function DashboardPage() {
   const admin = await requireAdminSession();
   if (!admin) redirect('/login');
