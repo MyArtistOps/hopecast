@@ -8,7 +8,7 @@ import { requireAdminSession } from '@/lib/supabaseServer';
 // Next.js route with its normal Supabase session cookie.
 
 const ALLOWED_ACTIONS = new Set([
-  'status', 'logs', 'prepare', 'start', 'start-audio-queue', 'now-playing',
+  'status', 'logs', 'prepare', 'start', 'start-audio-queue', 'start-from-playlist', 'now-playing',
   'stop', 'restart', 'emergency-stop', 'test-connection',
 ]);
 
