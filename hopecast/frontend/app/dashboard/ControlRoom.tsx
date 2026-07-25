@@ -8,18 +8,16 @@ type StreamStatus = {
   broadcast: { broadcastId?: string; mode?: string } | null;
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  offline: 'bg-gray-500',
-  preparing: 'bg-yellow-500',
-  starting: 'bg-yellow-400',
-  live: 'bg-green-500',
-  stopping: 'bg-orange-500',
-  error: 'bg-red-600',
-};
-
 type NowPlaying = {
   current: { title: string; artist?: string } | null;
   upNext: { title: string; artist?: string } | null;
+};
+
+type Playlist = { id: string; name: string };
+
+const STATUS_COLOR: Record<string, string> = {
+  offline: 'bg-gray-500', preparing: 'bg-yellow-500', starting: 'bg-yellow-400',
+  live: 'bg-green-500', stopping: 'bg-orange-500', error: 'bg-red-600',
 };
 
 async function callAction(action: string, body?: object) {
@@ -31,17 +29,17 @@ async function callAction(action: string, body?: object) {
   return res.json();
 }
 
-export default function ControlRoom({ stationName }: { stationName: string }) {
+export default function ControlRoom({ stationName, stationId }: { stationName: string; stationId: string }) {
   const [status, setStatus] = useState<StreamStatus | null>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmEmergency, setConfirmEmergency] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [statusData, nowPlayingData] = await Promise.all([
-      callAction('status'),
-      callAction('now-playing'),
-    ]);
+    const [statusData, nowPlayingData] = await Promise.all([callAction('status'), callAction('now-playing')]);
     setStatus(statusData);
     setNowPlaying(nowPlayingData);
   }, []);
@@ -52,14 +50,31 @@ export default function ControlRoom({ stationName }: { stationName: string }) {
     return () => clearInterval(id);
   }, [refresh]);
 
+  useEffect(() => {
+    fetch(`/api/playlists?stationId=${stationId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setPlaylists(d.playlists || []);
+        if (d.playlists?.[0]) setSelectedPlaylistId(d.playlists[0].id);
+      });
+  }, [stationId]);
+
   const run = async (action: string, body?: object) => {
     setBusy(true);
+    setStartError(null);
     try {
-      await callAction(action, body);
+      const result = await run_inner(action, body);
+      if (result?.error) setStartError(result.error);
       await refresh();
     } finally {
       setBusy(false);
     }
+  };
+  const run_inner = async (action: string, body?: object) => callAction(action, body);
+
+  const startBroadcast = () => {
+    if (!selectedPlaylistId) { setStartError('Choose a playlist first.'); return; }
+    run('start-from-playlist', { playlistId: selectedPlaylistId });
   };
 
   const s = status?.status || 'offline';
@@ -91,10 +106,26 @@ export default function ControlRoom({ stationName }: { stationName: string }) {
         </div>
       )}
 
+      {s === 'offline' && (
+        <div className="bg-panel border border-gold/30 rounded-xl p-4 space-y-3">
+          <p className="text-xs uppercase tracking-wide text-gold/70">Start a broadcast</p>
+          <select value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}
+            className="w-full rounded-md bg-base border border-gold/20 px-3 py-2 text-sm">
+            {playlists.length === 0 && <option value="">No playlists yet — create one first</option>}
+            {playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <p className="text-xs text-cream/40">
+            A playlist with a single video loops that video. A playlist with songs streams them over your station's background image.
+          </p>
+        </div>
+      )}
+
+      {startError && <p className="text-sm text-red-400">{startError}</p>}
+
       <div className="grid grid-cols-2 gap-3">
         <button
-          disabled={busy || s === 'live' || s === 'starting'}
-          onClick={() => run('start', { broadcastId: 'REPLACE_WITH_SELECTED_BROADCAST_ID', mode: 'mode1_video_loop' })}
+          disabled={busy || s === 'live' || s === 'starting' || !selectedPlaylistId}
+          onClick={startBroadcast}
           className="rounded-lg bg-panelAlt border border-gold/40 py-3 font-medium hover:border-gold disabled:opacity-40"
         >
           Start Stream
@@ -123,8 +154,7 @@ export default function ControlRoom({ stationName }: { stationName: string }) {
       </div>
 
       <p className="text-xs text-cream/50">
-        Mobile-friendly controls — designed to be usable from a phone if a broadcast needs
-        to be stopped remotely.
+        Mobile-friendly controls — designed to be usable from a phone if a broadcast needs to be stopped remotely.
       </p>
     </div>
   );
