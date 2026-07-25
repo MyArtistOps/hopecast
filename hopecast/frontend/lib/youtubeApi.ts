@@ -126,7 +126,7 @@ export async function setThumbnail(accessToken: string, videoId: string, imageBu
   const res = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${videoId}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': mimeType },
-    body: imageBuffer,
+    body: body: imageBuffer as any,,
   });
   if (!res.ok) throw new Error(`Thumbnail upload failed: ${await res.text()}`);
   return res.json();
