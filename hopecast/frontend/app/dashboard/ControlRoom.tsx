@@ -37,11 +37,21 @@ export default function ControlRoom({ stationName, stationId }: { stationName: s
   const [busy, setBusy] = useState(false);
   const [confirmEmergency, setConfirmEmergency] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [broadcastTitle, setBroadcastTitle] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [statusData, nowPlayingData] = await Promise.all([callAction('status'), callAction('now-playing')]);
     setStatus(statusData);
     setNowPlaying(nowPlayingData);
+
+    const broadcastId = statusData?.broadcast?.broadcastId;
+    if (broadcastId) {
+      const res = await fetch(`/api/broadcasts?id=${broadcastId}`);
+      const data = await res.json();
+      setBroadcastTitle(data.broadcast?.title || null);
+    } else {
+      setBroadcastTitle(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -63,14 +73,13 @@ export default function ControlRoom({ stationName, stationId }: { stationName: s
     setBusy(true);
     setStartError(null);
     try {
-      const result = await run_inner(action, body);
+      const result = await callAction(action, body);
       if (result?.error) setStartError(result.error);
       await refresh();
     } finally {
       setBusy(false);
     }
   };
-  const run_inner = async (action: string, body?: object) => callAction(action, body);
 
   const startBroadcast = () => {
     if (!selectedPlaylistId) { setStartError('Choose a playlist first.'); return; }
@@ -88,6 +97,13 @@ export default function ControlRoom({ stationName, stationId }: { stationName: s
           <span className="uppercase text-sm tracking-wide">{s}</span>
         </div>
       </header>
+
+      {(s === 'live' || s === 'starting' || s === 'preparing') && (
+        <div className="bg-panel border border-gold/30 rounded-xl p-4">
+          <p className="text-xs uppercase tracking-wide text-gold/70">Currently Broadcasting</p>
+          <p className="text-lg font-medium">{broadcastTitle || 'Loading…'}</p>
+        </div>
+      )}
 
       {status?.restartCount ? (
         <p className="text-sm text-yellow-400">Auto-restarted {status.restartCount} time(s) this broadcast.</p>
