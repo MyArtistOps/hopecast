@@ -6,7 +6,15 @@ export async function GET(req: NextRequest) {
   if (!admin) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const stationId = req.nextUrl.searchParams.get('stationId');
+  const id = req.nextUrl.searchParams.get('id');
   const supabase = getSupabaseServerClient();
+
+  if (id) {
+    const { data, error } = await supabase.from('broadcasts').select('*').eq('id', id).single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ broadcast: data });
+  }
+
   let query = supabase.from('broadcasts').select('*').order('created_at', { ascending: false }).limit(100);
   if (stationId) query = query.eq('station_id', stationId);
 
