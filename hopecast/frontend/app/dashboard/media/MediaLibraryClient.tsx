@@ -34,8 +34,9 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('');
   const [rightsStatus, setRightsStatus] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Upload panel state
   const [mode, setMode] = useState<'new' | 'replace'>('replace');
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -68,9 +69,26 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
     load();
   };
 
+  const handleDelete = async (id: string) => {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      setDeleteError(null);
+      return;
+    }
+    const res = await fetch(`/api/media?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) {
+      setDeleteError(data.error || 'Could not delete this item');
+      setConfirmDeleteId(null);
+      return;
+    }
+    setConfirmDeleteId(null);
+    load();
+  };
+
   const handleUpload = async () => {
     if (!file) { setUploadError('Choose a file first.'); return; }
-    if (mode === 'replace' && !replaceTargetId) { setUploadError('Choose which item this file replaces.'); return; }
+    if (mode === 'replace' && !replaceTargetId) { setUploadError("Choose which item this file replaces."); return; }
     if (mode === 'new' && !title.trim()) { setUploadError('Title is required for a new item.'); return; }
 
     setUploading(true);
@@ -78,7 +96,6 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
     setUploadSuccess(null);
 
     try {
-      // 1. Get a signed upload URL from our server (server-side, service role)
       const urlRes = await fetch('/api/media/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,15 +104,11 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
       const urlData = await urlRes.json();
       if (!urlRes.ok) throw new Error(urlData.error || 'Could not get upload URL');
 
-      // 2. Upload the file directly from the browser to Supabase Storage —
-      // never through our own server, so multi-GB video files don't hit any
-      // function size/timeout limit.
       const { error: uploadErr } = await supabaseBrowser.storage
         .from('media')
         .uploadToSignedUrl(urlData.path, urlData.token, file);
       if (uploadErr) throw uploadErr;
 
-      // 3. Save the small metadata record
       if (mode === 'replace') {
         const patchRes = await fetch('/api/media', {
           method: 'PATCH',
@@ -104,18 +117,16 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
         });
         const patchData = await patchRes.json();
         if (!patchRes.ok) throw new Error(patchData.error || 'Could not update media record');
-        setUploadSuccess('File replaced. Restart the stream on the server for it to take effect.');
+        setUploadSuccess('File replaced successfully. Restart the stream on the server for it to take effect.');
       } else {
         const postRes = await fetch('/api/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            stationId, title, artist, mediaType, category: uploadCategory, storagePath: urlData.path,
-          }),
+          body: JSON.stringify({ stationId, title, artist, mediaType, category: uploadCategory, storagePath: urlData.path }),
         });
         const postData = await postRes.json();
         if (!postRes.ok) throw new Error(postData.error || 'Could not create media record');
-        setUploadSuccess('New media item added.');
+        setUploadSuccess('New media item added successfully.');
       }
 
       setFile(null);
@@ -170,7 +181,7 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
 
         {file && <p className="text-xs text-cream/50">{file.name} — {(file.size / (1024 * 1024)).toFixed(0)} MB</p>}
         {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
-        {uploadSuccess && <p className="text-xs text-green-400">{uploadSuccess}</p>}
+        {uploadSuccess && <p className="text-xs text-green-400 font-medium">✓ {uploadSuccess}</p>}
 
         <button onClick={handleUpload} disabled={uploading}
           className="rounded-md bg-gold text-base font-medium px-4 py-2 text-sm disabled:opacity-50">
@@ -193,6 +204,8 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
         </select>
       </div>
 
+      {deleteError && <p className="text-sm text-red-400">{deleteError}</p>}
+
       <div className="space-y-2">
         {items.map((item) => (
           <div key={item.id} className="bg-panelAlt border border-gold/20 rounded-lg p-3 flex items-center justify-between gap-3">
@@ -214,6 +227,13 @@ export default function MediaLibraryClient({ stationId }: { stationId: string })
                 <input type="checkbox" checked={item.active} onChange={(e) => updateField(item.id, 'active', e.target.checked)} />
                 Active
               </label>
+              <button
+                onClick={() => handleDelete(item.id)}
+                onBlur={() => setConfirmDeleteId(null)}
+                className={`text-xs px-2 py-1 rounded border ${confirmDeleteId === item.id ? 'bg-red-900/60 border-red-500 text-red-300' : 'border-red-500/40 text-red-400 hover:border-red-500'}`}
+              >
+                {confirmDeleteId === item.id ? 'Confirm?' : 'Delete'}
+              </button>
             </div>
           </div>
         ))}
